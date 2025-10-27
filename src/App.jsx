@@ -4,7 +4,8 @@ import { auth, db, getCollectionPath } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import View from './components/View';
-
+ import { getDoc } from 'firebase/firestore';
+ 
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import ApartmentList from './components/ApartmentList';
@@ -218,21 +219,42 @@ export default function App() {
     }, []);
 
     useEffect(() => {
-        if (currentUser && db) {
-            const settingsPath = getCollectionPath(currentUser.uid, "settings");
-            const settingsDocRef = doc(db, settingsPath, 'config');
+        if (!currentUser || !db) return;
 
-            const unsubscribe = onSnapshot(settingsDocRef, (docSnap) => {
+        let isMounted = true;
+        let pollInterval;
+
+        const fetchSettings = async () => {
+            try {
+                const settingsPath = getCollectionPath(currentUser.uid, "settings");
+                const settingsDocRef = doc(db, settingsPath, 'config');
+
+                const docSnap = await getDoc(settingsDocRef);
+
+                if (!isMounted) return;
+
                 if (docSnap.exists()) {
                     setSiteName(docSnap.data().siteName || 'Yönetim Sistemi');
                 } else {
                     setSiteName('Yönetim Sistemi');
                 }
-            });
-            return () => unsubscribe();
-        }
-    }, [currentUser, db]);
+            } catch (error) {
+                console.error("Settings çekilirken hata:", error);
+                setSiteName('Yönetim Sistemi');
+            }
+        };
 
+        // İlk yükleme
+        fetchSettings();
+
+        // Her 5 saniyede yeniden kontrol
+        pollInterval = setInterval(fetchSettings, 5000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(pollInterval);
+        };
+    }, [currentUser, db]);
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -252,7 +274,7 @@ export default function App() {
                             <MainApp
                                 currentUser={currentUser}
                                 usdToTryRate={usdToTryRate}
-                                setUsdToTryRate={setUsdToTryRate} 
+                                setUsdToTryRate={setUsdToTryRate}
                                 siteName={siteName}
                                 setSiteName={setSiteName}
                                 showNotification={showNotification}

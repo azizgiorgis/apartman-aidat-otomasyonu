@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, getCollectionPath } from '../firebase'; 
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { Settings as SettingsIcon, Save, Loader2 } from 'lucide-react';
 
 const SETTINGS_DOC_ID = 'config'; 
@@ -11,27 +11,51 @@ const Settings = ({ setSiteName, userId, showNotification }) => {
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     
+    // ✅ Settings'i polling ile çek
     useEffect(() => {
         if (!userId) return;
 
-        const settingsPath = getCollectionPath(userId, "settings");
-        const settingsDocRef = doc(db, settingsPath, SETTINGS_DOC_ID);
+        let isMounted = true;
+        let pollInterval;
 
-        const unsubscribe = onSnapshot(settingsDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setName(data.siteName || '');
-                setType(data.type || 'APARTMENT');
-                setSiteName(data.siteName || ''); 
+        const fetchSettings = async () => {
+            try {
+                const settingsPath = getCollectionPath(userId, "settings");
+                const settingsDocRef = doc(db, settingsPath, SETTINGS_DOC_ID);
+
+                const docSnap = await getDoc(settingsDocRef);
+                
+                if (!isMounted) return;
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setName(data.siteName || '');
+                    setType(data.type || 'APARTMENT');
+                    setSiteName(data.siteName || '');
+                } else {
+                    // Varsayılan değerler
+                    setName('');
+                    setType('APARTMENT');
+                }
+                
+                setLoading(false);
+            } catch (error) {
+                console.error("Ayarlar çekilirken hata:", error);
+                setLoading(false);
             }
-            setLoading(false);
-        }, (error) => {
-            console.error("Ayarlar dinlenirken hata:", error);
-            setLoading(false);
-        });
+        };
 
-        return () => unsubscribe();
-    }, [setSiteName, userId]);
+        // İlk yükleme
+        fetchSettings();
+
+        // Her 5 saniyede yeniden kontrol
+        pollInterval = setInterval(fetchSettings, 5000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(pollInterval);
+        };
+    }, [userId, setSiteName]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -49,7 +73,6 @@ const Settings = ({ setSiteName, userId, showNotification }) => {
         setIsSaving(true);
         const settingsPath = getCollectionPath(userId, "settings");
         const settingsDocRef = doc(db, settingsPath, SETTINGS_DOC_ID);
-
 
         try {
             await setDoc(settingsDocRef, {
@@ -75,7 +98,6 @@ const Settings = ({ setSiteName, userId, showNotification }) => {
             </div>
         );
     }
-
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-lg h-full">
@@ -113,7 +135,7 @@ const Settings = ({ setSiteName, userId, showNotification }) => {
                 <button
                     type="submit"
                     disabled={isSaving}
-                    className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 flex items-center justify-center"
+                    className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 flex items-center justify-center disabled:bg-gray-400"
                 >
                     {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
                     {isSaving ? 'Kaydediliyor...' : 'Ayarları Kaydet'}
