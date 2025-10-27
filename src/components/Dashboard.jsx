@@ -21,6 +21,12 @@ const SummaryCard = ({ icon: Icon, title, value, unit = '', color }) => (
     </div>
 );
 
+useEffect(() => {
+    console.log('API Key:', import.meta.env.VITE_FIREBASE_API_KEY);
+    console.log('Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
+    console.log('Auth Domain:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+}, []);
+
 const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNotification, showConfirmation }) => {
     const [apartmentCount, setApartmentCount] = useState(0);
     const [totalDebtUSD, setTotalDebtUSD] = useState(0);
@@ -107,10 +113,10 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
-                    <BudgetTracker 
-                        userId={userId} 
-                        usdToTryRate={usdToTryRate} 
-                        showNotification={showNotification} 
+                    <BudgetTracker
+                        userId={userId}
+                        usdToTryRate={usdToTryRate}
+                        showNotification={showNotification}
                     />
                 </div>
                 <div className="lg:col-span-1 space-y-6">
