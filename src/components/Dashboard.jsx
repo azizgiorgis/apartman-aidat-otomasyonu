@@ -5,7 +5,7 @@ import DuesManagement from './DuesManagement';
 import CurrencyDisplay from './CurrencyDisplay';
 import { BarChart, Users, DollarSign, AlertTriangle, Loader2 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 
 const SummaryCard = ({ icon: Icon, title, value, unit = '', color }) => (
     <div className={`p-6 rounded-xl shadow-lg bg-white border-l-4 ${color}`}>
@@ -27,6 +27,7 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
     const [overdueDuesCount, setOverdueDuesCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
+    // ✅ FIX: Vercel'de onSnapshot yerine getDocs + interval polling yap
     useEffect(() => {
         if (!userId) {
             console.log('UserId yok, listener kurulamıyor');
@@ -35,65 +36,58 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
         }
 
         console.log('Dashboard listener kurulacak. UserId:', userId);
-        console.log('=== VERCEL ENV VARS ===');
-        console.log('API Key:', import.meta.env.VITE_FIREBASE_API_KEY?.substring(0, 10) || '❌ UNDEFINED');
-        console.log('Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID || '❌ UNDEFINED');
-        console.log('Auth Domain:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '❌ UNDEFINED');
 
-        try {
-            const apartmentsRef = collection(db, 'users', userId, 'apartments');
-            console.log('Collection path:', apartmentsRef.path);
+        let isMounted = true;
+        let pollInterval;
 
-            // ✅ TEST: getDocs ile kontrol et
-            getDocs(apartmentsRef)
-                .then(snap => {
-                    console.log('🔍 getDocs sonucu - Document sayısı:', snap.size);
-                    snap.forEach(doc => {
-                        console.log('📄 Document ID:', doc.id, 'Data:', doc.data());
-                    });
-                })
-                .catch(err => {
-                    console.error('❌ getDocs hatası:', err);
+        const fetchApartments = async () => {
+            try {
+                const apartmentsRef = collection(db, 'users', userId, 'apartments');
+                console.log('Collection path:', apartmentsRef.path);
+
+                const snap = await getDocs(apartmentsRef);
+                
+                if (!isMounted) return;
+
+                console.log('✅ Snapshot alındı, doc count:', snap.size);
+                
+                let debtSumUSD = 0;
+                let apartmentsWithDebt = 0;
+
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    const debt = data.currentDebtUSD || 0;
+                    debtSumUSD += debt;
+                    if (debt > 0) {
+                        apartmentsWithDebt++;
+                    }
                 });
 
-            // ✅ onSnapshot listener
-            const unsubscribeApartments = onSnapshot(
-                apartmentsRef,
-                (querySnapshot) => {
-                    console.log('✅ Snapshot alındı, doc count:', querySnapshot.size);
-                    let debtSumUSD = 0;
-                    let apartmentsWithDebt = 0;
-
-                    querySnapshot.forEach(doc => {
-                        const data = doc.data();
-                        const debt = data.currentDebtUSD || 0;
-                        debtSumUSD += debt;
-                        if (debt > 0) {
-                            apartmentsWithDebt++;
-                        }
-                    });
-
-                    setApartmentCount(querySnapshot.size);
-                    setTotalDebtUSD(debtSumUSD);
-                    setOverdueDuesCount(apartmentsWithDebt);
-                    setLoading(false);
-                },
-                (error) => {
-                    console.error("❌ Dashboard onSnapshot hatası:", error);
-                    console.error("Error code:", error.code);
-                    console.error("Error message:", error.message);
+                setApartmentCount(snap.size);
+                setTotalDebtUSD(debtSumUSD);
+                setOverdueDuesCount(apartmentsWithDebt);
+                setLoading(false);
+            } catch (error) {
+                console.error("❌ Dashboard Firestore hatası:", error);
+                console.error("Error code:", error.code);
+                console.error("Error message:", error.message);
+                if (isMounted) {
                     setLoading(false);
                 }
-            );
+            }
+        };
 
-            return () => {
-                console.log('🧹 Dashboard listener temizleniyor');
-                unsubscribeApartments();
-            };
-        } catch (error) {
-            console.error('❌ Collection referansı oluşturulurken hata:', error);
-            setLoading(false);
-        }
+        // İlk yükleme
+        fetchApartments();
+
+        // Her 5 saniyede yeniden kontrol et (polling)
+        pollInterval = setInterval(fetchApartments, 5000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(pollInterval);
+            console.log('🧹 Dashboard listener temizleniyor');
+        };
     }, [userId]);
 
     const totalDebtTRY = totalDebtUSD * (usdToTryRate || 1);
