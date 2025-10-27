@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 export const firebaseConfig = {
@@ -13,11 +13,13 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// ✅ FIX: Long polling kullan (WebSocket yerine)
-// Bu Vercel'de çalışacak
 export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
   experimentalForceLongPolling: true,
-  cacheSizeBytes: -1, // Persistence kapalı
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  }),
+  useFetchStreams: false, 
 });
 
 export const auth = getAuth(app);
