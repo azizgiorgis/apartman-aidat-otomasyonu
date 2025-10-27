@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 export const firebaseConfig = {
@@ -12,13 +12,20 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// ✅ FIX: Long polling kullan (WebSocket yerine)
+// Bu Vercel'de çalışacak
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  cacheSizeBytes: -1, // Persistence kapalı
+});
+
 export const auth = getAuth(app);
 
 /**
  * @param {string} userId - Geçerli kullanıcının UID'si
  * @param {string} collectionName - 'apartments', 'budget' gibi koleksiyon adı
- * @returns {string} Firebase için tam koleksiyon yolu')
+ * @returns {string} Firebase için tam koleksiyon yolu
  */
 export const getCollectionPath = (userId, collectionName) => {
   if (!userId) {
