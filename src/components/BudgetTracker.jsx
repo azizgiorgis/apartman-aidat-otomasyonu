@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, getCollectionPath } from '../firebase';
-import { doc, onSnapshot, updateDoc, collection, addDoc, query, orderBy, limit, increment } from 'firebase/firestore';
+import { doc, updateDoc, collection, addDoc, query, orderBy, limit, increment, getDocs } from 'firebase/firestore';
 import { DollarSign, MinusCircle, PlusCircle, AlertCircle, Calendar, Save, Loader2, DollarSign as DollarIcon, ChevronLeft, ChevronRight, List } from 'lucide-react';
 
 const BUDGET_DOC_ID = 'main_budget';
@@ -24,48 +24,93 @@ const BudgetTracker = ({ usdToTryRate, userId, showNotification }) => {
     const budgetRef = budgetPath ? doc(db, budgetPath, BUDGET_DOC_ID) : null;
 
     useEffect(() => {
-        if (!userId || !budgetPath || !expendituresPath) return;
+        if (!userId || !budgetPath) return;
 
-        const unsubscribeBudget = onSnapshot(budgetRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setBalance(docSnap.data().balanceUSD || 0);
-            } else {
-                setBalance(0);
+        let isMounted = true;
+        let pollInterval;
+
+        const fetchBudget = async () => {
+            try {
+                const budgetRef = doc(db, budgetPath, BUDGET_DOC_ID);
+                const budgetSnap = await getDocs(collection(db, budgetPath));
+                
+                if (!isMounted) return;
+
+                let balanceUSD = 0;
+                budgetSnap.forEach(docSnap => {
+                    if (docSnap.id === BUDGET_DOC_ID && docSnap.exists()) {
+                        balanceUSD = docSnap.data().balanceUSD || 0;
+                    }
+                });
+                
+                setBalance(balanceUSD);
+                setLoading(false);
+            } catch (error) {
+                console.error("Bütçe çekilirken hata:", error);
+                setLoading(false);
             }
-            setLoading(false);
-        }, (error) => {
-            console.error("Bütçe dinlenirken hata:", error);
-            setLoading(false);
-        });
+        };
 
-        const expendituresQuery = query(
-            collection(db, expendituresPath),
-            orderBy('date', 'desc')
-        );
+        // İlk yükleme
+        fetchBudget();
 
-        const unsubscribeExpenditures = onSnapshot(expendituresQuery, (snapshot) => {
-            const expList = [];
-            snapshot.forEach(doc => {
-                expList.push({ id: doc.id, ...doc.data() });
-            });
-            setExpenditures(expList);
-            setTotalItems(expList.length);
-            setExpendituresLoading(false);
-        }, (error) => {
-            console.error("Harcamalar dinlenirken hata:", error);
-            setExpendituresLoading(false);
-        });
+        // Her 5 saniyede yeniden kontrol
+        pollInterval = setInterval(fetchBudget, 5000);
 
         return () => {
-            unsubscribeBudget();
-            unsubscribeExpenditures();
+            isMounted = false;
+            clearInterval(pollInterval);
         };
-    }, [userId]);
+    }, [userId, budgetPath]);
+
+    useEffect(() => {
+        if (!userId || !expendituresPath) return;
+
+        let isMounted = true;
+        let pollInterval;
+
+        const fetchExpenditures = async () => {
+            try {
+                const expendituresQuery = query(
+                    collection(db, expendituresPath),
+                    orderBy('date', 'desc')
+                );
+
+                const snapshot = await getDocs(expendituresQuery);
+                
+                if (!isMounted) return;
+
+                const expList = [];
+                snapshot.forEach(doc => {
+                    expList.push({ id: doc.id, ...doc.data() });
+                });
+                
+                setExpenditures(expList);
+                setTotalItems(expList.length);
+                setExpendituresLoading(false);
+            } catch (error) {
+                console.error("Harcamalar çekilirken hata:", error);
+                setExpendituresLoading(false);
+            }
+        };
+
+        // İlk yükleme
+        fetchExpenditures();
+
+        // Her 5 saniyede yeniden kontrol
+        pollInterval = setInterval(fetchExpenditures, 5000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(pollInterval);
+        };
+    }, [userId, expendituresPath]);
 
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
     const currentExpenditures = expenditures.slice(indexOfFirstItem, indexOfLastItem);
     const totalPages = Math.ceil(totalItems / itemsPerPage);
+    
     const nextPage = () => {
         if (currentPage < totalPages) {
             setCurrentPage(currentPage + 1);

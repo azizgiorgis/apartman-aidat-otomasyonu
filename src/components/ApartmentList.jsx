@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, getCollectionPath } from "../firebase";
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, writeBatch, getDoc, where, getDocs, increment } from "firebase/firestore";
+import { collection, query, orderBy, doc, updateDoc, deleteDoc, writeBatch, where, getDocs, increment } from "firebase/firestore";
 import { Home, User, DollarSign, Loader2, ChevronDown, ChevronUp, Edit, Trash2, X, AlertTriangle, Calendar, List, CheckCircle, Share2, Building, Mail, Phone, CreditCard } from "lucide-react";
 import Modal from "./Modal";
 
@@ -20,56 +20,99 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedApartment, setSelectedApartment] = useState(null);
 
+  // ✅ Daireleri polling ile çek
   useEffect(() => {
     if (!userId) return;
 
     const apartmentsPath = getCollectionPath(userId, "apartments");
-    const duesPath = getCollectionPath(userId, "dues");
+    let isMounted = true;
+    let pollInterval;
 
-    const apartmentsQuery = query(
-      collection(db, apartmentsPath),
-      orderBy("block", "asc")
-    );
+    const fetchApartments = async () => {
+      try {
+        const apartmentsQuery = query(
+          collection(db, apartmentsPath),
+          orderBy("block", "asc")
+        );
 
-    const unsubscribeApartments = onSnapshot(apartmentsQuery, (querySnapshot) => {
-      const apts = [];
-      querySnapshot.forEach((doc) => {
-        apts.push({ id: doc.id, ...doc.data() });
-      });
-      setApartments(apts);
-      setLoading(false);
-    }, (error) => {
-      console.error("Daireler dinlenirken hata:", error);
-      showNotification("Daire listesi yüklenirken bir hata oluştu.", "error");
-      setLoading(false);
-    });
-    const duesQuery = query(
-      collection(db, duesPath),
-      orderBy("year", "desc"),
-      orderBy("month", "desc")
-    );
+        const querySnapshot = await getDocs(apartmentsQuery);
+        
+        if (!isMounted) return;
 
-    const unsubscribeDues = onSnapshot(duesQuery, (querySnapshot) => {
-      const duesByApartment = {};
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        const aptId = data.apartmentId;
-        if (aptId) {
-          if (!duesByApartment[aptId]) {
-            duesByApartment[aptId] = [];
-          }
-          duesByApartment[aptId].push({ id: doc.id, ...data });
-        }
-      });
-      setApartmentDues(duesByApartment);
-    }, (error) => {
-      console.error("Aidatlar dinlenirken hata:", error);
-      showNotification("Aidat (Borç) bilgileri yüklenirken bir hata oluştu.", "error");
-    });
+        const apts = [];
+        querySnapshot.forEach((doc) => {
+          apts.push({ id: doc.id, ...doc.data() });
+        });
+        
+        setApartments(apts);
+        setLoading(false);
+      } catch (error) {
+        console.error("Daireler çekilirken hata:", error);
+        showNotification("Daire listesi yükleniyor hata oluştu.", "error");
+        setLoading(false);
+      }
+    };
+
+    // İlk yükleme
+    fetchApartments();
+
+    // Her 5 saniyede yeniden kontrol
+    pollInterval = setInterval(fetchApartments, 5000);
 
     return () => {
-      unsubscribeApartments();
-      unsubscribeDues();
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [userId, showNotification]);
+
+  // ✅ Aidatları polling ile çek
+  useEffect(() => {
+    if (!userId) return;
+
+    const duesPath = getCollectionPath(userId, "dues");
+    let isMounted = true;
+    let pollInterval;
+
+    const fetchDues = async () => {
+      try {
+        const duesQuery = query(
+          collection(db, duesPath),
+          orderBy("year", "desc"),
+          orderBy("month", "desc")
+        );
+
+        const querySnapshot = await getDocs(duesQuery);
+        
+        if (!isMounted) return;
+
+        const duesByApartment = {};
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const aptId = data.apartmentId;
+          if (aptId) {
+            if (!duesByApartment[aptId]) {
+              duesByApartment[aptId] = [];
+            }
+            duesByApartment[aptId].push({ id: doc.id, ...data });
+          }
+        });
+        
+        setApartmentDues(duesByApartment);
+      } catch (error) {
+        console.error("Aidatlar çekilirken hata:", error);
+        showNotification("Aidat (Borç) bilgileri yüklenmede hata oluştu.", "error");
+      }
+    };
+
+    // İlk yükleme
+    fetchDues();
+
+    // Her 5 saniyede yeniden kontrol
+    pollInterval = setInterval(fetchDues, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
     };
   }, [userId, showNotification]);
 
@@ -428,7 +471,7 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
 
         <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
           <p className="text-yellow-800 text-sm">
-            <strong>📋 Güvenlik Notu:</strong> Linki sadece daire sahibiyle paylaş. Link herkese açık olsa da, her link sadece o daireye ait bilgileri gösterir.
+            <strong>🔒 Güvenlik Notu:</strong> Linki sadece daire sahibiyle paylaş. Link herkese açık olsa da, her link sadece o daireye ait bilgileri gösterir.
           </p>
         </div>
 
@@ -456,6 +499,7 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       </div>
     );
   };
+
   return (
     <div className="p-6 bg-white rounded-xl shadow-lg">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6">
