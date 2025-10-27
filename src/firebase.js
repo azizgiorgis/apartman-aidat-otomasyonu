@@ -1,6 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator } from "firebase/firestore";
+import { initializeFirestore, setLogLevel } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+
+setLogLevel('debug');
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,12 +15,12 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// ✅ FIX: Long polling + Persistent cache
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
+  experimentalLongPollingOptions: {
+    timeoutDurationMillis: 60000,
+  },
+  cacheSizeBytes: -1, 
 });
 
 export const auth = getAuth(app);

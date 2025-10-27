@@ -27,7 +27,6 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
     const [overdueDuesCount, setOverdueDuesCount] = useState(0);
     const [loading, setLoading] = useState(true);
 
-    // ✅ FIX: Vercel'de onSnapshot yerine getDocs + interval polling yap
     useEffect(() => {
         if (!userId) {
             console.log('UserId yok, listener kurulamıyor');
@@ -90,10 +89,7 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
             }
         };
 
-        // İlk yükleme
         fetchApartments();
-
-        // Her 5 saniyede yeniden kontrol et (polling)
         pollInterval = setInterval(fetchApartments, 5000);
 
         return () => {
