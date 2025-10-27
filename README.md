@@ -1,29 +1,33 @@
-# 🏢 Site & Apartman Yönetim Sistemi
+# 🏢 Apartment & Condominium Management System
 
-Modern, kullanıcı dostu bir site ve apartman yönetim uygulaması. Daire yönetimi, aidat takibi, bütçe kontrolü ve otomatik döviz kuru entegrasyonu ile tam teşekküllü bir yönetim çözümü.
+Modern, user-friendly apartment and condominium management application. Complete management solution with unit management, dues tracking, budget control, and automatic exchange rate integration.
 
-## 🌟 Özellikler
+## 🚀 Live Demo
 
-- 🏠 Daire ve Sakin Yönetimi
-- 💰 Otomatik Aidat Tahakkuku
-- 📊 Gerçek Zamanlı Bütçe Takibi
-- 💹 Canlı Döviz Kuru Entegrasyonu
-- 🔗 Daire Özel Paylaşım Linkleri
-- 📱 Responsive Tasarım
+**Test the application here:** [https://apartman-aidat-otomasyonu.vercel.app/](https://apartman-aidat-otomasyonu.vercel.app/)
+
+## 🌟 Features
+
+- 🏠 Unit and Resident Management
+- 💰 Automatic Dues Accrual
+- 📊 Real-time Budget Tracking
+- 💹 Live Exchange Rate Integration
+- 🔗 Unit-specific Share Links
+- 📱 Responsive Design
 - 🔐 Firebase Authentication
 - ☁️ Firestore Database
 
-## 🚀 Teknoloji Stack
+## 🚀 Tech Stack
 
 - **Frontend:** React.js, Tailwind CSS
 - **Backend:** Firebase (Auth, Firestore)
-- **API:** ER-API (Döviz Kuru)
+- **API:** ER-API (Exchange Rates)
 - **Deployment:** Vercel
 
-## 📦 Kurulum
+## 📦 Installation
 
 ```bash
 git clone [repo-url]
-cd site-yonetim-sistemi
+cd apartment-management-system
 npm install
 npm run dev
