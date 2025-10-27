@@ -4,8 +4,8 @@ import Settings from './Settings';
 import DuesManagement from './DuesManagement';
 import CurrencyDisplay from './CurrencyDisplay';
 import { BarChart, Users, DollarSign, AlertTriangle, Loader2 } from 'lucide-react';
-import { db, getCollectionPath } from '../firebase';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 const SummaryCard = ({ icon: Icon, title, value, unit = '', color }) => (
     <div className={`p-6 rounded-xl shadow-lg bg-white border-l-4 ${color}`}>
@@ -21,12 +21,6 @@ const SummaryCard = ({ icon: Icon, title, value, unit = '', color }) => (
     </div>
 );
 
-useEffect(() => {
-    console.log('API Key:', import.meta.env.VITE_FIREBASE_API_KEY);
-    console.log('Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
-    console.log('Auth Domain:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
-}, []);
-
 const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNotification, showConfirmation }) => {
     const [apartmentCount, setApartmentCount] = useState(0);
     const [totalDebtUSD, setTotalDebtUSD] = useState(0);
@@ -34,36 +28,57 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!userId) return;
+        if (!userId) {
+            console.log('UserId yok, listener kurulamıyor');
+            setLoading(false);
+            return;
+        }
 
-        const apartmentsPath = getCollectionPath(userId, "apartments");
-        const duesPath = getCollectionPath(userId, "dues");
-        const qApts = collection(db, apartmentsPath);
-        const unsubscribeApartments = onSnapshot(qApts, (querySnapshot) => {
-            let debtSumUSD = 0;
-            let apartmentsWithDebt = 0;
+        console.log('Dashboard listener kurulacak. UserId:', userId);
 
-            querySnapshot.forEach(doc => {
-                const data = doc.data();
-                const debt = data.currentDebtUSD || 0;
-                debtSumUSD += debt;
-                if (debt > 0) {
-                    apartmentsWithDebt++;
+        try {
+            // ✅ DOĞRU YÖNTEM: Separate arguments
+            const apartmentsRef = collection(db, 'users', userId, 'apartments');
+            console.log('Collection path:', apartmentsRef.path);
+
+            const unsubscribeApartments = onSnapshot(
+                apartmentsRef,
+                (querySnapshot) => {
+                    console.log('Snapshot alındı, doc count:', querySnapshot.size);
+                    
+                    let debtSumUSD = 0;
+                    let apartmentsWithDebt = 0;
+
+                    querySnapshot.forEach(doc => {
+                        const data = doc.data();
+                        const debt = data.currentDebtUSD || 0;
+                        debtSumUSD += debt;
+                        if (debt > 0) {
+                            apartmentsWithDebt++;
+                        }
+                    });
+
+                    setApartmentCount(querySnapshot.size);
+                    setTotalDebtUSD(debtSumUSD);
+                    setOverdueDuesCount(apartmentsWithDebt);
+                    setLoading(false);
+                },
+                (error) => {
+                    console.error("Dashboard Firestore hatası:", error);
+                    console.error("Error code:", error.code);
+                    console.error("Error message:", error.message);
+                    setLoading(false);
                 }
-            });
+            );
 
-            setApartmentCount(querySnapshot.size);
-            setTotalDebtUSD(debtSumUSD);
-            setOverdueDuesCount(apartmentsWithDebt);
+            return () => {
+                console.log('Dashboard listener temizleniyor');
+                unsubscribeApartments();
+            };
+        } catch (error) {
+            console.error('Collection referansı oluşturulurken hata:', error);
             setLoading(false);
-        }, (error) => {
-            console.error("Dashboard (Apartments) dinlenirken hata:", error);
-            setLoading(false);
-        });
-
-        return () => {
-            unsubscribeApartments();
-        };
+        }
     }, [userId]);
 
     const totalDebtTRY = totalDebtUSD * (usdToTryRate || 1);
