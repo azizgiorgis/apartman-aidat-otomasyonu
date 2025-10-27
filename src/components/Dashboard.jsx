@@ -5,7 +5,7 @@ import DuesManagement from './DuesManagement';
 import CurrencyDisplay from './CurrencyDisplay';
 import { BarChart, Users, DollarSign, AlertTriangle, Loader2 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs } from 'firebase/firestore';
 
 const SummaryCard = ({ icon: Icon, title, value, unit = '', color }) => (
     <div className={`p-6 rounded-xl shadow-lg bg-white border-l-4 ${color}`}>
@@ -37,15 +37,26 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
         console.log('Dashboard listener kurulacak. UserId:', userId);
 
         try {
-            // ✅ DOĞRU YÖNTEM: Separate arguments
             const apartmentsRef = collection(db, 'users', userId, 'apartments');
             console.log('Collection path:', apartmentsRef.path);
 
+            // ✅ TEST: getDocs ile kontrol et
+            getDocs(apartmentsRef)
+                .then(snap => {
+                    console.log('🔍 getDocs sonucu - Document sayısı:', snap.size);
+                    snap.forEach(doc => {
+                        console.log('📄 Document ID:', doc.id, 'Data:', doc.data());
+                    });
+                })
+                .catch(err => {
+                    console.error('❌ getDocs hatası:', err);
+                });
+
+            // ✅ onSnapshot listener
             const unsubscribeApartments = onSnapshot(
                 apartmentsRef,
                 (querySnapshot) => {
-                    console.log('Snapshot alındı, doc count:', querySnapshot.size);
-                    
+                    console.log('✅ Snapshot alındı, doc count:', querySnapshot.size);
                     let debtSumUSD = 0;
                     let apartmentsWithDebt = 0;
 
@@ -64,7 +75,7 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
                     setLoading(false);
                 },
                 (error) => {
-                    console.error("Dashboard Firestore hatası:", error);
+                    console.error("❌ Dashboard onSnapshot hatası:", error);
                     console.error("Error code:", error.code);
                     console.error("Error message:", error.message);
                     setLoading(false);
@@ -72,11 +83,11 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
             );
 
             return () => {
-                console.log('Dashboard listener temizleniyor');
+                console.log('🧹 Dashboard listener temizleniyor');
                 unsubscribeApartments();
             };
         } catch (error) {
-            console.error('Collection referansı oluşturulurken hata:', error);
+            console.error('❌ Collection referansı oluşturulurken hata:', error);
             setLoading(false);
         }
     }, [userId]);
