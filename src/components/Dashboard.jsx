@@ -42,14 +42,27 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
 
         const fetchApartments = async () => {
             try {
+                console.log('📍 UserId:', userId);
+                
                 const apartmentsRef = collection(db, 'users', userId, 'apartments');
-                console.log('Collection path:', apartmentsRef.path);
+                console.log('📍 Collection path:', apartmentsRef.path);
+                
+                // Users collection kontrol et
+                const usersRef = collection(db, 'users');
+                const usersSnap = await getDocs(usersRef);
+                console.log('📍 Users collection total docs:', usersSnap.size);
+                
+                // Bu user'a ait tüm collections'ları listele
+                const userDocRef = collection(db, 'users', userId);
+                const userDoc = await getDocs(userDocRef);
+                console.log('📍 Current user sub-collections:', userDoc.size);
 
                 const snap = await getDocs(apartmentsRef);
                 
                 if (!isMounted) return;
 
                 console.log('✅ Snapshot alındı, doc count:', snap.size);
+                console.log('📄 Documents:', snap.docs.map(d => ({ id: d.id, data: d.data() })));
                 
                 let debtSumUSD = 0;
                 let apartmentsWithDebt = 0;
