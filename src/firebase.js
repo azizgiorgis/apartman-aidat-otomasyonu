@@ -1,8 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, setLogLevel } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, setLogLevel } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-setLogLevel('debug');
+setLogLevel('warn'); 
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,7 +20,9 @@ export const db = initializeFirestore(app, {
   experimentalLongPollingOptions: {
     timeoutDurationMillis: 60000,
   },
-  cacheSizeBytes: -1, 
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
 });
 
 export const auth = getAuth(app);
