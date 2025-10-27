@@ -13,13 +13,12 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
+// ✅ FIX: Long polling + Persistent cache
 export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
   experimentalForceLongPolling: true,
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
-  }),
-  useFetchStreams: false, 
+  })
 });
 
 export const auth = getAuth(app);
