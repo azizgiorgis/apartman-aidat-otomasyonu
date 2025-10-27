@@ -1,8 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, setLogLevel } from "firebase/firestore";
+import { initializeFirestore, disableNetwork, enableNetwork, setLogLevel } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-setLogLevel('warn'); 
+setLogLevel('warn');
 
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,11 +18,13 @@ export const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
   experimentalLongPollingOptions: {
-    timeoutDurationMillis: 60000,
+    timeoutDurationMillis: 120000, // 2 dakika
   },
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
+  cacheSizeBytes: -1, 
+});
+
+enableNetwork(db).catch(err => {
+  console.warn('Network enable hatası:', err);
 });
 
 export const auth = getAuth(app);
