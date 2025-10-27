@@ -35,6 +35,10 @@ const Dashboard = ({ usdToTryRate, setUsdToTryRate, setSiteName, userId, showNot
         }
 
         console.log('Dashboard listener kurulacak. UserId:', userId);
+        console.log('=== VERCEL ENV VARS ===');
+        console.log('API Key:', import.meta.env.VITE_FIREBASE_API_KEY?.substring(0, 10) || '❌ UNDEFINED');
+        console.log('Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID || '❌ UNDEFINED');
+        console.log('Auth Domain:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '❌ UNDEFINED');
 
         try {
             const apartmentsRef = collection(db, 'users', userId, 'apartments');
