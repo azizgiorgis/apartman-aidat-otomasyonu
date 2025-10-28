@@ -20,7 +20,6 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedApartment, setSelectedApartment] = useState(null);
 
-  // ✅ Daireleri polling ile çek
   useEffect(() => {
     if (!userId) return;
 
@@ -36,14 +35,14 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
         );
 
         const querySnapshot = await getDocs(apartmentsQuery);
-        
+
         if (!isMounted) return;
 
         const apts = [];
         querySnapshot.forEach((doc) => {
           apts.push({ id: doc.id, ...doc.data() });
         });
-        
+
         setApartments(apts);
         setLoading(false);
       } catch (error) {
@@ -53,10 +52,8 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       }
     };
 
-    // İlk yükleme
     fetchApartments();
 
-    // Her 5 saniyede yeniden kontrol
     pollInterval = setInterval(fetchApartments, 5000);
 
     return () => {
@@ -65,7 +62,6 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
     };
   }, [userId, showNotification]);
 
-  // ✅ Aidatları polling ile çek
   useEffect(() => {
     if (!userId) return;
 
@@ -77,18 +73,19 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       try {
         const duesQuery = query(
           collection(db, duesPath),
-          orderBy("year", "desc"),
-          orderBy("month", "desc")
+          where("recordType", "==", "ACCRUAL")
         );
 
         const querySnapshot = await getDocs(duesQuery);
-        
+
         if (!isMounted) return;
 
         const duesByApartment = {};
+
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           const aptId = data.apartmentId;
+
           if (aptId) {
             if (!duesByApartment[aptId]) {
               duesByApartment[aptId] = [];
@@ -96,18 +93,26 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
             duesByApartment[aptId].push({ id: doc.id, ...data });
           }
         });
-        
+
+        Object.keys(duesByApartment).forEach(aptId => {
+          duesByApartment[aptId].sort((a, b) => {
+            const yearDiff = b.year - a.year;
+            if (yearDiff !== 0) return yearDiff;
+            return b.month - a.month;
+          });
+        });
+
+        console.log("✅ Borçlar başarıyla çekildi:", duesByApartment);
         setApartmentDues(duesByApartment);
+
       } catch (error) {
-        console.error("Aidatlar çekilirken hata:", error);
+        console.error("❌ Aidatlar çekilirken hata:", error);
         showNotification("Aidat (Borç) bilgileri yüklenmede hata oluştu.", "error");
       }
     };
 
-    // İlk yükleme
     fetchDues();
 
-    // Her 5 saniyede yeniden kontrol
     pollInterval = setInterval(fetchDues, 5000);
 
     return () => {
@@ -145,9 +150,9 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
 
   const toggleAll = () => {
     if (expandedApartments.size === Object.keys(groupedApartments).length) {
-      setExpandedApartments(new Set());
-    } else {
       setExpandedApartments(new Set(Object.keys(groupedApartments)));
+    } else {
+      setExpandedApartments(new Set());
     }
   };
 
@@ -244,15 +249,16 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       return;
     }
 
-    const dueAmountUSD = due.amountUSD;
-    const dueAmountTRY = dueAmountUSD * (due.rate || usdToTryRate);
+    const paymentAmountUSD = due.remainingDebtUSD || due.amountUSD;
+    const paymentAmountTRY = paymentAmountUSD * (usdToTryRate || 1);
+
     const monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
     const dueMonth = monthNames[due.month - 1];
     const dueYear = due.year;
 
     const isConfirmed = await showConfirmation(
       `${apartment.owner} - ${dueMonth} ${dueYear} aidatını tahsil edeceksiniz.\n\n` +
-      `Tutar: ${dueAmountTRY.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })} (${dueAmountUSD.toFixed(2)} USD)\n\n` +
+      `Tutar: ${paymentAmountTRY.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })} (${paymentAmountUSD.toFixed(2)} USD)\n\n` +
       `Onaylıyor musunuz?`
     );
 
@@ -268,21 +274,48 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
 
     try {
       const apartmentRef = doc(db, apartmentsPath, apartment.id);
-      const newDebtUSD = (apartment.currentDebtUSD || 0) - dueAmountUSD;
+      const newDebtUSD = (apartment.currentDebtUSD || 0) - paymentAmountUSD;
       batch.update(apartmentRef, {
         currentDebtUSD: newDebtUSD > 0 ? newDebtUSD : 0
       });
+
       const dueRef = doc(db, duesPath, due.id);
-      batch.delete(dueRef);
+      batch.update(dueRef, {
+        isPaid: true,
+        paidAmountUSD: (due.paidAmountUSD || 0) + paymentAmountUSD,
+        remainingDebtUSD: 0,
+        paymentDate: new Date(),
+        paymentRate: usdToTryRate,
+        paymentAmountTRY: paymentAmountTRY,
+      });
 
       const budgetRef = doc(db, budgetPath, BUDGET_DOC_ID);
-      batch.set(budgetRef, {
-        balanceUSD: increment(dueAmountUSD)
-      }, { merge: true });
+
+      try {
+        const budgetSnap = await getDoc(budgetRef);
+
+        if (budgetSnap.exists()) {
+          batch.update(budgetRef, {
+            balanceUSD: increment(paymentAmountUSD)
+          });
+        } else {
+          batch.set(budgetRef, {
+            balanceUSD: paymentAmountUSD,
+            createdAt: new Date(),
+            lastUpdated: new Date()
+          });
+        }
+      } catch (budgetCheckError) {
+        console.error("Bütçe belgesi kontrol sırasında hata:", budgetCheckError);
+        batch.set(budgetRef, {
+          balanceUSD: paymentAmountUSD,
+          lastUpdated: new Date()
+        }, { merge: true });
+      }
 
       const incomeRef = doc(collection(db, expendituresPath));
       batch.set(incomeRef, {
-        amountUSD: dueAmountUSD,
+        amountUSD: paymentAmountUSD,
         type: 'INCOME',
         description: `${apartment.owner} (${apartment.block}-${apartment.aptNo}) ${dueMonth} ${dueYear} Aidat Tahsilatı`,
         date: new Date(),
@@ -297,7 +330,6 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       showNotification('Aidat tahsilatı sırasında bir hata oluştu.', "error");
     }
   };
-
   const handlePayAll = async (apartment, dues, debtUSD) => {
     if (!usdToTryRate) {
       showNotification("Döviz kuru bilgisi yüklenmeden işlem yapılamaz.", "error");
@@ -311,9 +343,11 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       return;
     }
 
+    const finalizedDebtTRY = finalizedDebtUSD * usdToTryRate;
+
     const isConfirmed = await showConfirmation(
       `${apartment.owner} - TÜM BORÇLARI tahsil edeceksiniz.\n\n` +
-      `Toplam Tutar: ${(finalizedDebtUSD * usdToTryRate).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })} (${finalizedDebtUSD.toFixed(2)} USD)\n\n` +
+      `Toplam Tutar: ${finalizedDebtTRY.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })} (${finalizedDebtUSD.toFixed(2)} USD)\n\n` +
       `Onaylıyor musunuz?`
     );
 
@@ -332,14 +366,46 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       batch.update(apartmentRef, { currentDebtUSD: 0 });
 
       dues.forEach(due => {
-        const dueRef = doc(db, duesPath, due.id);
-        batch.delete(dueRef);
+        const paymentAmountUSD = due.remainingDebtUSD || 0;
+
+        if (paymentAmountUSD > 0) {
+          const dueRef = doc(db, duesPath, due.id);
+          const paymentAmountTRY = paymentAmountUSD * usdToTryRate;
+
+          batch.update(dueRef, {
+            isPaid: true,
+            paidAmountUSD: (due.paidAmountUSD || 0) + paymentAmountUSD,
+            remainingDebtUSD: 0,
+            paymentDate: new Date(),
+            paymentRate: usdToTryRate,
+            paymentAmountTRY: paymentAmountTRY,
+          });
+        }
       });
 
       const budgetRef = doc(db, budgetPath, BUDGET_DOC_ID);
-      batch.set(budgetRef, {
-        balanceUSD: increment(finalizedDebtUSD)
-      }, { merge: true });
+
+      try {
+        const budgetSnap = await getDoc(budgetRef);
+
+        if (budgetSnap.exists()) {
+          batch.update(budgetRef, {
+            balanceUSD: increment(finalizedDebtUSD)
+          });
+        } else {
+          batch.set(budgetRef, {
+            balanceUSD: finalizedDebtUSD,
+            createdAt: new Date(),
+            lastUpdated: new Date()
+          });
+        }
+      } catch (budgetCheckError) {
+        console.error("Bütçe belgesi kontrol sırasında hata:", budgetCheckError);
+        batch.set(budgetRef, {
+          balanceUSD: finalizedDebtUSD,
+          lastUpdated: new Date()
+        }, { merge: true });
+      }
 
       const incomeRef = doc(collection(db, expendituresPath));
       batch.set(incomeRef, {
@@ -358,7 +424,6 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
       showNotification('Borç tahsilatı sırasında bir hata oluştu.', "error");
     }
   };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-500">
@@ -606,7 +671,10 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
               {expandedApartments.has(block) && (
                 <div className="divide-y divide-gray-100">
                   {apts.sort((a, b) => a.aptNo - b.aptNo).map((apt) => {
-                    const aptDues = apartmentDues[apt.id] || [];
+                    const allDues = apartmentDues[apt.id] || [];
+
+                    const aptDues = allDues.filter(due => !due.isPaid && (due.remainingDebtUSD > 0 || due.remainingDebtUSD === undefined));
+
                     const hasDebt = apt.currentDebtUSD > 0;
                     const debtUSD = apt.currentDebtUSD || 0;
                     const debtTRY = debtUSD * (usdToTryRate || 1);
@@ -691,7 +759,10 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
                                     return dateA - dateB;
                                   }).map((due) => {
                                     const date = due.accrualDate?.toDate ? due.accrualDate.toDate() : new Date(due.accrualDate);
-                                    const dueTRY = due.amountUSD * (due.rate || usdToTryRate || 1);
+
+                                    const remainingUSD = due.remainingDebtUSD !== undefined ? due.remainingDebtUSD : due.amountUSD;
+                                    const dueTRY = remainingUSD * (due.rate || usdToTryRate || 1);
+
                                     const monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
                                     const dueMonth = monthNames[due.month - 1] || `Ay ${due.month}`;
 
@@ -714,7 +785,7 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
                                               {dueTRY.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })}
                                             </div>
                                             <div className="text-xs text-gray-500">
-                                              {due.amountUSD.toFixed(2)} Dolar
+                                              {remainingUSD.toFixed(2)} Dolar
                                             </div>
                                           </div>
                                           <button
@@ -723,7 +794,7 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
                                               handlePaySingleDue(apt, due);
                                             }}
                                             className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                                            title="Bu ayın aidatını tahsil et"
+                                            title="Bu ayın borcunu tahsil et"
                                           >
                                             Tahsil Et
                                           </button>
@@ -744,7 +815,7 @@ const ApartmentList = ({ usdToTryRate, userId, showNotification, showConfirmatio
                                     );
 
                                     if (isConfirmed) {
-                                      handlePayAll(apt, aptDues, debtUSD);
+                                      handlePayAll(apt, allDues, debtUSD);
                                     }
                                   }}
                                 >

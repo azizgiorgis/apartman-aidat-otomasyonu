@@ -10,7 +10,7 @@ const DuesManagement = ({ usdToTryRate, userId, isCompact = false, showNotificat
     const [loading, setLoading] = useState(false);
 
     const monthNames = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
-        "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık\n"];
+        "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 
     const handleDuesAccrual = async (e) => {
         e.preventDefault();
@@ -36,9 +36,8 @@ const DuesManagement = ({ usdToTryRate, userId, isCompact = false, showNotificat
         setLoading(true);
 
         const apartmentsPath = getCollectionPath(userId, "apartments");
-        const duesPath = getCollectionPath(userId, "dues");
-        const budgetPath = getCollectionPath(userId, "budget");
-        const BUDGET_DOC_ID = 'main_budget';
+        const duesPath = getCollectionPath(userId, "dues"); 
+        const BUDGET_DOC_ID = 'main_budget'; 
 
         try {
             const dueAmountUSD = dueAmountTRY / usdToTryRate;
@@ -51,12 +50,15 @@ const DuesManagement = ({ usdToTryRate, userId, isCompact = false, showNotificat
                 setLoading(false);
                 return;
             }
+            
             const existingDuesQuery = query(
                 collection(db, duesPath),
                 where("month", "==", month),
-                where("year", "==", year)
+                where("year", "==", year),
+                where("recordType", "==", "ACCRUAL") 
             );
             const existingDuesSnapshots = await getDocs(existingDuesQuery);
+            
             if (!existingDuesSnapshots.empty) {
                 const isConfirmed = await showConfirmation(`${monthNames[month - 1]} ayı için zaten aidat tahakkuk ettirilmiş. Tekrar borçlandırmak istediğinizden emin misiniz?`);
                 if (!isConfirmed) {
@@ -64,21 +66,31 @@ const DuesManagement = ({ usdToTryRate, userId, isCompact = false, showNotificat
                     return;
                 }
             }
+            
             const batch = writeBatch(db);
 
             apartments.forEach(apt => {
                 const newDueRef = doc(collection(db, duesPath)); 
+                
                 batch.set(newDueRef, {
                     apartmentId: apt.id,
                     amountUSD: dueAmountUSD,
                     month: month,
                     year: year,
                     accrualDate: new Date(),
-                    rate: usdToTryRate, 
+                    rate: usdToTryRate,
+                    
+                    // ÖDEME TAKİBİ İÇİN YENİ ALANLAR
+                    isPaid: false, // Ödenme durumu (Borçlandığında false)
+                    paidAmountUSD: 0, // Ödenen miktar (Başlangıçta 0)
+                    remainingDebtUSD: dueAmountUSD, // Kalan borç (Başlangıçta tahakkuk miktarı)
+                    paymentDate: null, // Ödeme tarihi (Başlangıçta null)
+                    recordType: 'ACCRUAL', // Kayıt tipi: Tahakkuk
                 });
 
                 const aptRef = doc(db, apartmentsPath, apt.id);
                 const newDebtUSD = (apt.currentDebtUSD || 0) + dueAmountUSD;
+                
                 batch.update(aptRef, {
                     currentDebtUSD: newDebtUSD,
                     lastAccrual: new Date(),
