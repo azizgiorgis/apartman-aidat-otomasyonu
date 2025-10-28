@@ -4,7 +4,7 @@ Modern, user-friendly apartment and condominium management application. Complete
 
 ## 🚀 Live Demo
 
-**Test the application here:** [https://apartman-aidat-otomasyonu.vercel.app/](https://apartman-aidat-otomasyonu.vercel.app/)
+**Test the application here:** [https://apartman-aidat-otomasyonu.web.app/](https://apartman-aidat-otomasyonu.web.app/)
 
 ## 🌟 Features
 
@@ -22,7 +22,7 @@ Modern, user-friendly apartment and condominium management application. Complete
 - **Frontend:** React.js, Tailwind CSS
 - **Backend:** Firebase (Auth, Firestore)
 - **API:** ER-API (Exchange Rates)
-- **Deployment:** Vercel
+- **Deployment:** Firebase
 
 ## 📦 Installation
 
